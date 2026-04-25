@@ -1,4 +1,4 @@
-// Package validator provides request validation utilities using go-playground/validator.
+// Package helper provides request validation utilities using go-playground/validator.
 package helper
 
 import (
@@ -6,6 +6,13 @@ import (
 
 	"github.com/go-playground/validator/v10"
 )
+
+// Validate is the global validator instance
+var Validate *validator.Validate
+
+func init() {
+	Validate = validator.New()
+}
 
 // NewValidator creates a configured validator instance with custom error messages.
 func NewValidator() *RequestValidator {

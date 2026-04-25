@@ -9,11 +9,10 @@ import (
 	"syscall"
 	"time"
 
+	"hotel.com/app/internal/client"
 	"hotel.com/app/internal/config"
-	"hotel.com/app/internal/database"
 	"hotel.com/app/internal/handler"
 	"hotel.com/app/internal/logging"
-	"hotel.com/app/internal/repo"
 	"hotel.com/app/internal/service"
 )
 
@@ -23,68 +22,105 @@ const (
 )
 
 func main() {
+	// Load configuration
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		fmt.Println("failed to load config:", err)
 		os.Exit(1)
 	}
 
-	//create logger
-	l := logging.New()
-	l.Info("App initiated")
+	// Create logger
+	l := logging.New(cfg.Logging.Level, cfg.Logging.Format)
+	l.Info("BFF Service initiated")
 
-	//db connection
-	db, err := database.NewConn(os.Getenv("DATABASE_URL"))
+	// Parse timeout duration
+	timeout, err := time.ParseDuration(cfg.DownstreamServices.Timeout)
 	if err != nil {
-		l.Error("Conection to database failed", "err", err)
-		os.Exit(-1)
-	}
-	l.Info("Database connection successful")
-
-	defer db.Close()
-
-	err = database.RunMigrations(os.Getenv("DATABASE_URL"), l)
-	if err != nil {
-		os.Exit(-1)
+		l.Warn("invalid timeout duration, using default", "error", err)
+		timeout = 30 * time.Second
 	}
 
-	//jwt key file check
+	// Initialize downstream service clients
+	hotelClient := client.NewHotelClient(
+		cfg.DownstreamServices.HotelServiceURL,
+		timeout,
+		l,
+	)
+	l.Info("Hotel Service client initialized", "url", cfg.DownstreamServices.HotelServiceURL)
+
+	roomClient := client.NewRoomClient(
+		cfg.DownstreamServices.RoomServiceURL,
+		timeout,
+		l,
+	)
+	l.Info("Room Service client initialized", "url", cfg.DownstreamServices.RoomServiceURL)
+
+	reservationClient := client.NewReservationClient(
+		cfg.DownstreamServices.ReservationServiceURL,
+		timeout,
+		l,
+	)
+	l.Info("Reservation Service client initialized", "url", cfg.DownstreamServices.ReservationServiceURL)
+
+	// JWT key file check
 	if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
-		l.Error("JWT private key file not found", "err", err)
-		os.Exit(-1)
+		l.Error("JWT private key file not found", "path", privateKeyPath)
+		os.Exit(1)
 	}
-	//jwt key file check
 	if _, err := os.Stat(publicKeyPath); os.IsNotExist(err) {
-		l.Error("JWT public key file not found", "err", err)
-		os.Exit(-1)
+		l.Error("JWT public key file not found", "path", publicKeyPath)
+		os.Exit(1)
+	}
+	l.Info("JWT keys loaded successfully")
+
+	// Create service layer
+	svc := service.New(l, hotelClient, roomClient, reservationClient)
+	l.Info("Service layer initialized")
+
+	// JWT configuration
+	jwtExpiration, _ := time.ParseDuration(cfg.JWT.Expiration)
+	if jwtExpiration == 0 {
+		jwtExpiration = 24 * time.Hour
 	}
 
-	//repo creation
-	r := repo.NewDatabaseRepo(db)
-
-	//service creation
-	svc := service.New(l, r)
-
-	// handler creation
 	jwtConfig := handler.JWTConfig{
-		Issuer:     "blueprint-service",
-		Expiration: 24 * time.Minute,
+		Issuer:     cfg.JWT.Issuer,
+		Expiration: jwtExpiration,
 	}
 	jwtAuth := handler.NewJWTAuthenticator(jwtConfig, privateKeyPath, publicKeyPath)
+
+	// Create HTTP handler
 	h := handler.New(svc, l, jwtAuth)
 
-	// server creation
-	mux := h.NewServerMux(nil)
+	// Create rate limiter if enabled
+	var rateLimiter *handler.RateLimiter
+	if cfg.RateLimit.Enabled {
+		rateLimiter = handler.NewRateLimiter(
+			cfg.RateLimit.RequestsPerSecond,
+			cfg.RateLimit.Burst,
+			true,
+		)
+		l.Info("Rate limiting enabled",
+			"rps", cfg.RateLimit.RequestsPerSecond,
+			"burst", cfg.RateLimit.Burst,
+		)
+	}
+
+	// Create HTTP server
+	mux := h.NewServerMux(rateLimiter)
 	port := cfg.Server.Port
 	if port == 0 {
 		port = 8080
 	}
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: mux,
 	}
 
-	l.Info("Server listening", "addr", srv.Addr)
+	l.Info("BFF Server listening", "addr", srv.Addr)
+
+	// Start server in a goroutine
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			l.Error("server failed", "err", err)
@@ -92,14 +128,14 @@ func main() {
 		}
 	}()
 
-	// Block until SIGTERM or SIGINT
+	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 	<-quit
 
 	l.Info("Shutting down server...")
 
-	// Give in-flight requests 30s to finish
+	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -108,5 +144,4 @@ func main() {
 	}
 
 	l.Info("Server stopped")
-
 }

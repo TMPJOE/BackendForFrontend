@@ -1,4 +1,5 @@
-# API Gateway Configuration
+# BFF (Backend for Frontend) Configuration
+
 server:
   host: "0.0.0.0"
   port: 8080
@@ -6,9 +7,16 @@ server:
   write_timeout: 15s
   idle_timeout: 60s
 
-logging:
-  level: "info"
-  format: "json"
+jwt:
+  issuer: "bff-service"
+  expiration: "24h"
+
+# Downstream microservice URLs
+downstream_services:
+  hotel_service_url: "${HOTEL_SERVICE_URL:http://localhost:8081}"
+  room_service_url: "${ROOM_SERVICE_URL:http://localhost:8082}"
+  reservation_service_url: "${RESERVATION_SERVICE_URL:http://localhost:8083}"
+  timeout: 30s
 
 rate_limit:
   enabled: true
@@ -19,8 +27,12 @@ circuit_breaker:
   enabled: true
   max_failures: 5
   timeout: 30s
+  reset_timeout: 60s
 
-# Health check configuration
 health:
   path: "/health"
   ready_path: "/ready"
+
+logging:
+  level: "info"
+  format: "json"

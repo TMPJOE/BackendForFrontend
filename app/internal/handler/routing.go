@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v3"
-	"hotel.com/app/internal/helper"
 )
 
+// NewServerMux creates and configures the HTTP router with all BFF routes
 func (h *Handler) NewServerMux(rateLimiter *RateLimiter) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -35,25 +35,53 @@ func (h *Handler) NewServerMux(rateLimiter *RateLimiter) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Get("/health", h.healthCheck)
 		r.Get("/ready", h.readinessCheck)
-		// Add other generic public endpoints here (metrics, version, etc.)
 	})
 
 	// Protected routes - require JWT authentication
 	r.Group(func(r chi.Router) {
-		r.Use(h.jwtAuth.Middleware()) // JWT authentication middleware
+		r.Use(h.jwtAuth.Middleware())
 
-		// Add protected routes here - keep abstract, not service-specific
+		// Hotel routes
+		r.Route("/hotels", func(r chi.Router) {
+			r.Get("/", h.GetHotels)
+			r.Post("/", h.CreateHotel)
+
+			r.Route("/{hotelId}", func(r chi.Router) {
+				r.Get("/", h.GetHotel)
+				r.Put("/", h.UpdateHotel)
+				r.Delete("/", h.DeleteHotel)
+				r.Get("/details", h.GetHotelWithRooms)
+
+				// Room routes nested under hotel
+				r.Get("/rooms", h.GetRoomsByHotel)
+				r.Post("/rooms", h.CreateRoom)
+			})
+		})
+
+		// Room routes (direct access)
+		r.Route("/rooms", func(r chi.Router) {
+			r.Get("/{roomId}", h.GetRoom)
+			r.Put("/{roomId}", h.UpdateRoom)
+			r.Delete("/{roomId}", h.DeleteRoom)
+			r.Get("/{roomId}/availability", h.CheckAvailability)
+		})
+
+		// Reservation routes
+		r.Route("/reservations", func(r chi.Router) {
+			r.Get("/", h.GetReservations)
+			r.Post("/", h.CreateReservation)
+
+			r.Route("/{reservationId}", func(r chi.Router) {
+				r.Get("/", h.GetReservation)
+				r.Put("/", h.UpdateReservation)
+				r.Delete("/", h.DeleteReservation)
+				r.Get("/details", h.GetReservationDetails)
+				r.Patch("/cancel", h.CancelReservation)
+			})
+		})
 	})
 
 	return r
-}
-
-func (h *Handler) notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	helper.RespondError(w, http.StatusNotFound, "endpoint not found")
-}
-
-func (h *Handler) methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
-	helper.RespondError(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
 // GetUserIDFromRequest extracts user ID from the authenticated request
