@@ -31,13 +31,16 @@ type Room struct {
 
 // CreateRoomRequest represents the request to create a room
 type CreateRoomRequest struct {
-	HotelID     string   `json:"hotel_id" validate:"required"`
-	RoomNumber  string   `json:"room_number" validate:"required"`
-	Type        string   `json:"type" validate:"required"`
-	Description string   `json:"description"`
-	Price       float64  `json:"price" validate:"required,gt=0"`
-	Capacity    int      `json:"capacity" validate:"required,gt=0"`
-	Amenities   []string `json:"amenities"`
+	HotelID         string   `json:"hotel_id" validate:"required"`
+	Name            string   `json:"name" validate:"required"`
+	Type            string   `json:"type" validate:"required"`
+	Description     string   `json:"description" validate:"required"`
+	Price           float64  `json:"price" validate:"required,gt=0"`
+	Capacity        int      `json:"capacity" validate:"required,gt=0"`
+	SpaceInfo       string   `json:"space_info" validate:"required"`
+	BedDistribution string   `json:"bed_distribution" validate:"required"`
+	Quantity        int      `json:"quantity" validate:"required,gt=0"`
+	Amenities       []string `json:"amenities"`
 }
 
 // UpdateRoomRequest represents the request to update a room

@@ -35,11 +35,15 @@ func (s *BFFService) CreateRoom(ctx context.Context, req *models.CreateRoomReque
 
 	// Forward to Room Service
 	createReq := &client.CreateRoomRequest{
-		HotelID:     req.HotelID,
-		Type:        req.Type,
-		Description: req.Description,
-		Price:       req.Price,
-		Capacity:    req.Capacity,
+		HotelID:         req.HotelID,
+		Name:            req.Name,
+		Type:            req.Type,
+		Description:     req.Description,
+		Price:           req.Price,
+		Capacity:        req.Capacity,
+		SpaceInfo:       req.SpaceInfo,
+		BedDistribution: req.BedDistribution,
+		Quantity:        req.Quantity,
 	}
 
 	room, err := s.roomClient.CreateRoom(ctx, createReq)
