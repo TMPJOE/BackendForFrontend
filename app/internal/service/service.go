@@ -47,12 +47,13 @@ type Service interface {
 
 // BFFService implements the Service interface
 type BFFService struct {
-	logger            *slog.Logger
-	hotelClient       *client.HotelClient
-	roomClient        *client.RoomClient
-	reservationClient *client.ReservationClient
-	bookingClient     *client.BookingClient
-	paymentClient     *client.PaymentClient
+	logger             *slog.Logger
+	hotelClient        *client.HotelClient
+	roomClient         *client.RoomClient
+	reservationClient  *client.ReservationClient
+	bookingClient      *client.BookingClient
+	paymentClient      *client.PaymentClient
+	notificationClient *client.NotificationClient
 }
 
 // New creates a new BFFService with the given dependencies
@@ -63,14 +64,16 @@ func New(
 	reservationClient *client.ReservationClient,
 	bookingClient *client.BookingClient,
 	paymentClient *client.PaymentClient,
+	notificationClient *client.NotificationClient,
 ) Service {
 	return &BFFService{
-		logger:            logger,
-		hotelClient:       hotelClient,
-		roomClient:        roomClient,
-		reservationClient: reservationClient,
-		bookingClient:     bookingClient,
-		paymentClient:     paymentClient,
+		logger:             logger,
+		hotelClient:        hotelClient,
+		roomClient:         roomClient,
+		reservationClient:  reservationClient,
+		bookingClient:      bookingClient,
+		paymentClient:      paymentClient,
+		notificationClient: notificationClient,
 	}
 }
 
@@ -218,6 +221,11 @@ func (s *BFFService) Check(ctx context.Context) error {
 	if err := s.bookingClient.Health(ctx); err != nil {
 		s.logger.Warn("booking service health check failed", "error", err)
 		unhealthyServices = append(unhealthyServices, "booking")
+	}
+
+	if err := s.notificationClient.Health(ctx); err != nil {
+		s.logger.Warn("notification service health check failed", "error", err)
+		unhealthyServices = append(unhealthyServices, "notification")
 	}
 
 	// BFF is considered ready even if downstream services are unhealthy

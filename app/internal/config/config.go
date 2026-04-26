@@ -25,13 +25,14 @@ type JWT struct {
 
 // DownstreamServices holds configuration for all downstream microservices
 type DownstreamServices struct {
-	HotelServiceURL       string `yaml:"hotel_service_url"`
-	RoomServiceURL        string `yaml:"room_service_url"`
-	BookingServiceURL     string `yaml:"booking_service_url"`
-	MediaServiceURL       string `yaml:"media_service_url"`
-	ReservationServiceURL string `yaml:"reservation_service_url"`
-	PaymentServiceURL     string `yaml:"payment_service_url"`
-	Timeout               string `yaml:"timeout"`
+	HotelServiceURL        string `yaml:"hotel_service_url"`
+	RoomServiceURL         string `yaml:"room_service_url"`
+	BookingServiceURL      string `yaml:"booking_service_url"`
+	MediaServiceURL        string `yaml:"media_service_url"`
+	ReservationServiceURL  string `yaml:"reservation_service_url"`
+	PaymentServiceURL      string `yaml:"payment_service_url"`
+	NotificationServiceURL string `yaml:"notification_service_url"`
+	Timeout                string `yaml:"timeout"`
 }
 
 // GetTimeout returns the parsed timeout duration
@@ -121,6 +122,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.DownstreamServices.PaymentServiceURL == "" {
 		cfg.DownstreamServices.PaymentServiceURL = "http://localhost:8088"
+	}
+	if cfg.DownstreamServices.NotificationServiceURL == "" {
+		cfg.DownstreamServices.NotificationServiceURL = "http://localhost:8089"
 	}
 
 	return &cfg, nil

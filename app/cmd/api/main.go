@@ -75,6 +75,13 @@ func main() {
 	)
 	l.Info("Payment Service client initialized", "url", cfg.DownstreamServices.PaymentServiceURL)
 
+	notificationClient := client.NewNotificationClient(
+		cfg.DownstreamServices.NotificationServiceURL,
+		timeout,
+		l,
+	)
+	l.Info("Notification Service client initialized", "url", cfg.DownstreamServices.NotificationServiceURL)
+
 	if _, err := os.Stat(publicKeyPath); os.IsNotExist(err) {
 		l.Error("JWT public key file not found", "path", publicKeyPath)
 		os.Exit(1)
@@ -82,7 +89,7 @@ func main() {
 	l.Info("JWT keys loaded successfully")
 
 	// Create service layer
-	svc := service.New(l, hotelClient, roomClient, reservationClient, bookingClient, paymentClient)
+	svc := service.New(l, hotelClient, roomClient, reservationClient, bookingClient, paymentClient, notificationClient)
 	l.Info("Service layer initialized")
 
 	// JWT configuration

@@ -145,5 +145,45 @@ func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *
 		"payment_status", paymentRes.Status,
 	)
 
+	// FIRE-AND-FORGET: Send booking confirmation email to the guest
+	if req.GuestEmail != "" {
+		guestName := req.GuestName
+		if guestName == "" {
+			guestName = "Guest"
+		}
+		s.notificationClient.SendNotificationAsync(ctx, &client.NotificationRequest{
+			Type:           "booking_confirmation",
+			RecipientEmail: req.GuestEmail,
+			RecipientName:  guestName,
+			Data: map[string]interface{}{
+				"booking_id":  booking.ID,
+				"hotel_name":  hotel.Name,
+				"room_name":   room.Name,
+				"check_in":    req.StartDate.Format("2006-01-02"),
+				"check_out":   req.EndDate.Format("2006-01-02"),
+				"guest_count": req.GuestCount,
+				"total_price": totalPrice,
+			},
+		})
+	}
+
+	// FIRE-AND-FORGET: Send new booking alert to hotel admin
+	s.notificationClient.SendNotificationAsync(ctx, &client.NotificationRequest{
+		Type:           "admin_new_booking",
+		RecipientEmail: "admin@hotel.com", // In production, resolve from hotel owner data
+		RecipientName:  "Hotel Administrator",
+		Data: map[string]interface{}{
+			"booking_id":  booking.ID,
+			"hotel_name":  hotel.Name,
+			"room_name":   room.Name,
+			"guest_name":  req.GuestName,
+			"guest_email": req.GuestEmail,
+			"check_in":    req.StartDate.Format("2006-01-02"),
+			"check_out":   req.EndDate.Format("2006-01-02"),
+			"guest_count": req.GuestCount,
+			"total_price": totalPrice,
+		},
+	})
+
 	return mapBookingClientToModel(booking), nil
 }
