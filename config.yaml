@@ -19,6 +19,7 @@ downstream_services:
   booking_service_url: "${BOOKING_SERVICE_URL}"
   reservation_service_url: "${RESERVATION_SERVICE_URL}"
   media_service_url: "${MEDIA_SERVICE_URL}"
+  payment_service_url: "${PAYMENT_SERVICE_URL}"
   timeout: 30s
 
 rate_limit:

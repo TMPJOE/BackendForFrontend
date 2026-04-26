@@ -130,6 +130,7 @@ type CreateBookingRequest struct {
 	GuestName  string `json:"guest_name,omitempty"`
 	GuestEmail string `json:"guest_email,omitempty"`
 	GuestPhone string `json:"guest_phone,omitempty"`
+	PaymentMethodID string `json:"payment_method_id" validate:"required"`
 }
 
 // ErrorResponse represents a standard error response

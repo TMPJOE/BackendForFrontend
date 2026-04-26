@@ -116,12 +116,33 @@ func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *
 		return nil, err
 	}
 
+	// BRIDGE: Call Payment Service to process the payment
+	paymentReq := &client.ProcessPaymentRequest{
+		BookingID:       booking.ID,
+		Amount:          totalPrice,
+		PaymentMethodID: req.PaymentMethodID,
+	}
+
+	paymentRes, err := s.paymentClient.ProcessPayment(ctx, paymentReq)
+	if err != nil {
+		// Payment failed, ideally we should compensate by cancelling the booking
+		// For now, we will just return the error and the booking remains pending/failed
+		s.logger.Error("payment processing failed", "booking_id", booking.ID, "error", err)
+		return nil, err
+	}
+
+	if paymentRes.Status == "succeeded" {
+		// Ideally we would update the booking status to confirmed via the bookingClient here
+		s.logger.Info("payment succeeded for booking", "booking_id", booking.ID)
+	}
+
 	s.logger.Info("booking created via BFF",
 		"booking_id", booking.ID,
 		"user_id", userID,
 		"hotel", hotel.Name,
 		"nights", nights,
 		"total_price", totalPrice,
+		"payment_status", paymentRes.Status,
 	)
 
 	return mapBookingClientToModel(booking), nil

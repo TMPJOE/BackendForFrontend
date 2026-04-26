@@ -30,6 +30,7 @@ type DownstreamServices struct {
 	BookingServiceURL     string `yaml:"booking_service_url"`
 	MediaServiceURL       string `yaml:"media_service_url"`
 	ReservationServiceURL string `yaml:"reservation_service_url"`
+	PaymentServiceURL     string `yaml:"payment_service_url"`
 	Timeout               string `yaml:"timeout"`
 }
 
@@ -117,6 +118,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.DownstreamServices.MediaServiceURL == "" {
 		cfg.DownstreamServices.MediaServiceURL = "http://localhost:8082"
+	}
+	if cfg.DownstreamServices.PaymentServiceURL == "" {
+		cfg.DownstreamServices.PaymentServiceURL = "http://localhost:8088"
 	}
 
 	return &cfg, nil

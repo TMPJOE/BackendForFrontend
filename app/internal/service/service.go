@@ -52,6 +52,7 @@ type BFFService struct {
 	roomClient        *client.RoomClient
 	reservationClient *client.ReservationClient
 	bookingClient     *client.BookingClient
+	paymentClient     *client.PaymentClient
 }
 
 // New creates a new BFFService with the given dependencies
@@ -61,6 +62,7 @@ func New(
 	roomClient *client.RoomClient,
 	reservationClient *client.ReservationClient,
 	bookingClient *client.BookingClient,
+	paymentClient *client.PaymentClient,
 ) Service {
 	return &BFFService{
 		logger:            logger,
@@ -68,6 +70,7 @@ func New(
 		roomClient:        roomClient,
 		reservationClient: reservationClient,
 		bookingClient:     bookingClient,
+		paymentClient:     paymentClient,
 	}
 }
 
