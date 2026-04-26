@@ -40,6 +40,7 @@ type CreateReservationRequest struct {
 	GuestName   string    `json:"guest_name" validate:"required"`
 	GuestEmail  string    `json:"guest_email" validate:"required,email"`
 	GuestPhone  string    `json:"guest_phone"`
+	GuestCount  int       `json:"guest_count"` // Number of guests
 	CheckIn     time.Time `json:"check_in" validate:"required"`
 	CheckOut    time.Time `json:"check_out" validate:"required"`
 	TotalAmount float64   `json:"total_amount" validate:"required,gt=0"`
@@ -79,8 +80,9 @@ func NewReservationClient(baseURL string, timeout time.Duration, logger *slog.Lo
 }
 
 // GetReservation retrieves a reservation by ID
+// Calls GET /bookings/{id} in Booking Service
 func (c *ReservationClient) GetReservation(ctx context.Context, reservationID string) (*Reservation, error) {
-	path := fmt.Sprintf("/reservations/%s", reservationID)
+	path := fmt.Sprintf("/bookings/%s", reservationID)
 	resp, err := c.DoWithContext(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get reservation request failed: %w", err)
@@ -104,8 +106,9 @@ func (c *ReservationClient) GetReservation(ctx context.Context, reservationID st
 }
 
 // GetReservations retrieves reservations with optional filters
+// Calls GET /bookings in Booking Service
 func (c *ReservationClient) GetReservations(ctx context.Context, filter ReservationFilter) ([]Reservation, error) {
-	path := "/reservations"
+	path := "/bookings"
 	resp, err := c.DoWithContext(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get reservations request failed: %w", err)
@@ -125,8 +128,9 @@ func (c *ReservationClient) GetReservations(ctx context.Context, filter Reservat
 }
 
 // GetReservationsByUser retrieves all reservations for a specific user
+// Calls GET /users/{user_id}/bookings in Booking Service
 func (c *ReservationClient) GetReservationsByUser(ctx context.Context, userID string) ([]Reservation, error) {
-	path := fmt.Sprintf("/users/%s/reservations", userID)
+	path := fmt.Sprintf("/users/%s/bookings", userID)
 	resp, err := c.DoWithContext(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get reservations by user request failed: %w", err)
@@ -146,8 +150,9 @@ func (c *ReservationClient) GetReservationsByUser(ctx context.Context, userID st
 }
 
 // CreateReservation creates a new reservation
+// Calls POST /bookings in Booking Service
 func (c *ReservationClient) CreateReservation(ctx context.Context, req *CreateReservationRequest) (*Reservation, error) {
-	resp, err := c.DoWithContext(ctx, http.MethodPost, "/reservations", req)
+	resp, err := c.DoWithContext(ctx, http.MethodPost, "/bookings", req)
 	if err != nil {
 		return nil, fmt.Errorf("create reservation request failed: %w", err)
 	}

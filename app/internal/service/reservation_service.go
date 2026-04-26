@@ -8,86 +8,65 @@ import (
 	"hotel.com/app/internal/models"
 )
 
-// GetReservation retrieves a single reservation by ID
-// PASSTHROUGH: Directly forwards to Reservation Service (with enrichment)
-func (s *BFFService) GetReservation(ctx context.Context, reservationID string) (*models.Reservation, error) {
-	reservation, err := s.reservationClient.GetReservation(ctx, reservationID)
+// GetReservation retrieves a single booking by ID from the Booking Service.
+func (s *BFFService) GetReservation(ctx context.Context, reservationID string) (*models.Booking, error) {
+	booking, err := s.bookingClient.GetBooking(ctx, reservationID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Enrich with hotel and room names (best effort)
-	hotelName := ""
-	roomNumber := ""
-	if hotel, err := s.hotelClient.GetHotel(ctx, reservation.HotelID); err == nil {
-		hotelName = hotel.Name
-	}
-	if room, err := s.roomClient.GetRoom(ctx, reservation.RoomID); err == nil {
-		roomNumber = room.RoomNumber
-	}
-
-	return mapReservationClientToModel(reservation, hotelName, roomNumber), nil
+	return mapBookingClientToModel(booking), nil
 }
 
-// GetReservationDetails retrieves a reservation with full hotel and room details
-// AGGREGATION: Calls 3 services, merges response
-// This is a BFF value-add: frontend gets everything in one call
-func (s *BFFService) GetReservationDetails(ctx context.Context, reservationID string) (*models.ReservationDetails, error) {
-	// Fetch reservation from Reservation Service
-	reservation, err := s.reservationClient.GetReservation(ctx, reservationID)
+// GetReservationDetails retrieves a booking with full hotel and room details.
+// AGGREGATION: calls BookingService + HotelService + RoomService, merges response.
+func (s *BFFService) GetReservationDetails(ctx context.Context, reservationID string) (*models.BookingDetails, error) {
+	// Fetch booking from Booking Service
+	booking, err := s.bookingClient.GetBooking(ctx, reservationID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Fetch hotel details from Hotel Service
-	hotel, err := s.hotelClient.GetHotel(ctx, reservation.HotelID)
+	hotel, err := s.hotelClient.GetHotel(ctx, booking.HotelID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Fetch room details from Room Service
-	room, err := s.roomClient.GetRoom(ctx, reservation.RoomID)
+	room, err := s.roomClient.GetRoom(ctx, booking.RoomID)
 	if err != nil {
 		return nil, err
 	}
 
-	return &models.ReservationDetails{
-		Reservation: *mapReservationClientToModel(reservation, hotel.Name, room.RoomNumber),
-		Hotel:       *mapHotelClientToModel(hotel),
-		Room:        *mapRoomClientToModel(room, hotel.Name),
+	return &models.BookingDetails{
+		Booking: *mapBookingClientToModel(booking),
+		Hotel:   *mapHotelClientToModel(hotel),
+		Room:    *mapRoomClientToModel(room, hotel.Name),
 	}, nil
 }
 
-// GetReservations retrieves all reservations for a user
-// PASSTHROUGH: Directly forwards to Reservation Service (with enrichment)
-func (s *BFFService) GetReservations(ctx context.Context, userID string) ([]models.Reservation, error) {
-	reservations, err := s.reservationClient.GetReservationsByUser(ctx, userID)
+// GetReservations retrieves all bookings for a user from the Booking Service.
+func (s *BFFService) GetReservations(ctx context.Context, userID string) ([]models.Booking, error) {
+	resp, err := s.bookingClient.GetBookingsByUser(ctx, userID, 1, 100)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]models.Reservation, len(reservations))
-	for i, r := range reservations {
-		// Enrich with hotel and room names (best effort)
-		hotelName := ""
-		roomNumber := ""
-		if hotel, err := s.hotelClient.GetHotel(ctx, r.HotelID); err == nil {
-			hotelName = hotel.Name
-		}
-		if room, err := s.roomClient.GetRoom(ctx, r.RoomID); err == nil {
-			roomNumber = room.RoomNumber
-		}
-
-		result[i] = *mapReservationClientToModel(&r, hotelName, roomNumber)
+	result := make([]models.Booking, len(resp.Bookings))
+	for i, b := range resp.Bookings {
+		b := b // capture loop variable
+		result[i] = *mapBookingClientToModel(&b)
 	}
-
 	return result, nil
 }
 
-// CreateReservation creates a new reservation after validating hotel and room exist
-// BRIDGE: Validates hotel + room exist, calculates total, then creates reservation
-// This is a BFF value-add: orchestrates complex validation across services
-func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *models.CreateReservationRequest) (*models.Reservation, error) {
+// CreateReservation creates a booking after orchestrating validation across services.
+// BRIDGE:
+//  1. Validates the hotel exists (HotelService)
+//  2. Validates the room exists and belongs to that hotel (RoomService)
+//  3. Calculates total_price = room.Price × nights
+//  4. Forwards the assembled CreateBookingRequest to the Booking Service
+func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *models.CreateBookingRequest) (*models.Booking, error) {
 	// BRIDGE: Validate hotel exists
 	hotel, err := s.hotelClient.GetHotel(ctx, req.HotelID)
 	if err != nil {
@@ -104,50 +83,46 @@ func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *
 		return nil, client.ErrInvalidReservationData
 	}
 
-	// Parse and validate dates
-	checkIn, err := parseTime(req.CheckIn.Format(time.RFC3339))
-	if err != nil {
-		return nil, client.ErrInvalidDates
-	}
-
-	checkOut, err := parseTime(req.CheckOut.Format(time.RFC3339))
-	if err != nil {
-		return nil, client.ErrInvalidDates
-	}
-
 	// Validate check-in is not in the past
-	if checkIn.Before(time.Now().Truncate(24 * time.Hour)) {
+	if req.StartDate.Before(time.Now().Truncate(24 * time.Hour)) {
 		return nil, client.ErrPastCheckIn
 	}
 
 	// Validate check-out is after check-in
-	if !checkOut.After(checkIn) {
+	if !req.EndDate.After(req.StartDate) {
 		return nil, client.ErrCheckOutBeforeCheckIn
 	}
 
-	// Calculate total amount
-	nights := calculateNights(checkIn, checkOut)
-	totalAmount := calculateTotalAmount(room.Price, nights)
+	// Calculate total price: room price × nights
+	nights := calculateNights(req.StartDate, req.EndDate)
+	totalPrice := calculateTotalAmount(room.Price, nights)
 
-	// Forward to Reservation Service
-	createReq := &client.CreateReservationRequest{
-		HotelID:     req.HotelID,
-		RoomID:      req.RoomID,
-		UserID:      userID,
-		GuestName:   req.GuestName,
-		GuestEmail:  req.GuestEmail,
-		GuestPhone:  req.GuestPhone,
-		CheckIn:     checkIn,
-		CheckOut:    checkOut,
-		TotalAmount: totalAmount,
-		Notes:       req.Notes,
+	// Forward to Booking Service with enriched data
+	createReq := &client.CreateBookingRequest{
+		UserID:     userID,
+		HotelID:    req.HotelID,
+		RoomID:     req.RoomID,
+		StartDate:  req.StartDate,
+		EndDate:    req.EndDate,
+		GuestCount: req.GuestCount,
+		TotalPrice: totalPrice,
+		GuestName:  req.GuestName,
+		GuestEmail: req.GuestEmail,
+		GuestPhone: req.GuestPhone,
 	}
 
-	reservation, err := s.reservationClient.CreateReservation(ctx, createReq)
+	booking, err := s.bookingClient.CreateBooking(ctx, createReq)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return reservation with enriched data
-	return mapReservationClientToModel(reservation, hotel.Name, room.RoomNumber), nil
+	s.logger.Info("booking created via BFF",
+		"booking_id", booking.ID,
+		"user_id", userID,
+		"hotel", hotel.Name,
+		"nights", nights,
+		"total_price", totalPrice,
+	)
+
+	return mapBookingClientToModel(booking), nil
 }

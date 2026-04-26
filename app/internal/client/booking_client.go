@@ -25,6 +25,9 @@ type Booking struct {
 	GuestCount int       `json:"guest_count"`
 	TotalPrice float64   `json:"total_price"`
 	Status     string    `json:"status"`
+	GuestName  string    `json:"guest_name,omitempty"`
+	GuestEmail string    `json:"guest_email,omitempty"`
+	GuestPhone string    `json:"guest_phone,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -47,6 +50,9 @@ type CreateBookingRequest struct {
 	EndDate    time.Time `json:"end_date"`
 	GuestCount int       `json:"guest_count"`
 	TotalPrice float64   `json:"total_price"`
+	GuestName  string    `json:"guest_name,omitempty"`
+	GuestEmail string    `json:"guest_email,omitempty"`
+	GuestPhone string    `json:"guest_phone,omitempty"`
 }
 
 // UpdateBookingRequest represents the request to update a booking

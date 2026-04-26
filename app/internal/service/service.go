@@ -5,7 +5,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -35,15 +34,15 @@ type Service interface {
 	// CreateRoom - BRIDGE: validates hotel exists, then creates room
 	CreateRoom(ctx context.Context, req *models.CreateRoomRequest) (*models.Room, error)
 
-	// RESERVATION OPERATIONS
-	// GetReservations - simple passthrough (user's own reservations)
-	GetReservations(ctx context.Context, userID string) ([]models.Reservation, error)
+	// BOOKING / RESERVATION OPERATIONS
+	// GetReservations - simple passthrough (user's own bookings)
+	GetReservations(ctx context.Context, userID string) ([]models.Booking, error)
 	// GetReservation - simple passthrough
-	GetReservation(ctx context.Context, reservationID string) (*models.Reservation, error)
-	// GetReservationDetails - AGGREGATION: reservation + hotel + room merged
-	GetReservationDetails(ctx context.Context, reservationID string) (*models.ReservationDetails, error)
-	// CreateReservation - BRIDGE: validates hotel + room exist, calculates total, creates reservation
-	CreateReservation(ctx context.Context, userID string, req *models.CreateReservationRequest) (*models.Reservation, error)
+	GetReservation(ctx context.Context, reservationID string) (*models.Booking, error)
+	// GetReservationDetails - AGGREGATION: booking + hotel + room merged
+	GetReservationDetails(ctx context.Context, reservationID string) (*models.BookingDetails, error)
+	// CreateReservation - BRIDGE: validates hotel + room exist, calculates total, creates booking
+	CreateReservation(ctx context.Context, userID string, req *models.CreateBookingRequest) (*models.Booking, error)
 }
 
 // BFFService implements the Service interface
@@ -52,6 +51,7 @@ type BFFService struct {
 	hotelClient       *client.HotelClient
 	roomClient        *client.RoomClient
 	reservationClient *client.ReservationClient
+	bookingClient     *client.BookingClient
 }
 
 // New creates a new BFFService with the given dependencies
@@ -60,12 +60,14 @@ func New(
 	hotelClient *client.HotelClient,
 	roomClient *client.RoomClient,
 	reservationClient *client.ReservationClient,
+	bookingClient *client.BookingClient,
 ) Service {
 	return &BFFService{
 		logger:            logger,
 		hotelClient:       hotelClient,
 		roomClient:        roomClient,
 		reservationClient: reservationClient,
+		bookingClient:     bookingClient,
 	}
 }
 
@@ -78,58 +80,52 @@ func mapHotelClientToModel(h *client.Hotel) *models.Hotel {
 		ID:          h.ID,
 		Name:        h.Name,
 		Description: h.Description,
-		Address:     h.Address,
 		City:        h.City,
-		Country:     h.Country,
 		Rating:      h.Rating,
+		Lat:         h.Lat,
+		Lng:         h.Lng,
 		CreatedAt:   h.CreatedAt,
 		UpdatedAt:   h.UpdatedAt,
 	}
 }
 
 // mapRoomClientToModel converts a client Room to a models Room
-func mapRoomClientToModel(r *client.Room, hotelName string) *models.Room {
+func mapRoomClientToModel(r *client.Room, _ string) *models.Room {
 	if r == nil {
 		return nil
 	}
 	return &models.Room{
 		ID:          r.ID,
 		HotelID:     r.HotelID,
-		HotelName:   hotelName,
-		RoomNumber:  r.RoomNumber,
 		Type:        r.Type,
 		Description: r.Description,
 		Price:       r.Price,
 		Capacity:    r.Capacity,
-		Amenities:   r.Amenities,
-		IsAvailable: r.IsAvailable,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
 }
 
-// mapReservationClientToModel converts a client Reservation to a models Reservation
-func mapReservationClientToModel(r *client.Reservation, hotelName, roomNumber string) *models.Reservation {
-	if r == nil {
+// mapBookingClientToModel converts a client Booking (BookingMicroService) to a models Booking.
+func mapBookingClientToModel(b *client.Booking) *models.Booking {
+	if b == nil {
 		return nil
 	}
-	return &models.Reservation{
-		ID:          r.ID,
-		HotelID:     r.HotelID,
-		HotelName:   hotelName,
-		RoomID:      r.RoomID,
-		RoomNumber:  roomNumber,
-		UserID:      r.UserID,
-		GuestName:   r.GuestName,
-		GuestEmail:  r.GuestEmail,
-		GuestPhone:  r.GuestPhone,
-		CheckIn:     r.CheckIn,
-		CheckOut:    r.CheckOut,
-		TotalAmount: r.TotalAmount,
-		Status:      r.Status,
-		Notes:       r.Notes,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+	return &models.Booking{
+		ID:         b.ID,
+		UserID:     b.UserID,
+		HotelID:    b.HotelID,
+		RoomID:     b.RoomID,
+		StartDate:  b.StartDate,
+		EndDate:    b.EndDate,
+		GuestCount: b.GuestCount,
+		TotalPrice: b.TotalPrice,
+		Status:     b.Status,
+		GuestName:  b.GuestName,
+		GuestEmail: b.GuestEmail,
+		GuestPhone: b.GuestPhone,
+		CreatedAt:  b.CreatedAt,
+		UpdatedAt:  b.UpdatedAt,
 	}
 }
 
@@ -166,23 +162,31 @@ func parseTime(t string) (time.Time, error) {
 }
 
 // Check performs a health check on all downstream services
+// Returns nil even if services are unhealthy - the BFF can still serve cached data
+// and degraded functionality. Logs warnings for monitoring purposes.
 func (s *BFFService) Check(ctx context.Context) error {
-	var errs []error
+	var unhealthyServices []string
 
 	if err := s.hotelClient.Health(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("hotel service: %w", err))
+		s.logger.Warn("hotel service health check failed", "error", err)
+		unhealthyServices = append(unhealthyServices, "hotel")
 	}
 
 	if err := s.roomClient.Health(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("room service: %w", err))
+		s.logger.Warn("room service health check failed", "error", err)
+		unhealthyServices = append(unhealthyServices, "room")
 	}
 
-	if err := s.reservationClient.Health(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("reservation service: %w", err))
+	if err := s.bookingClient.Health(ctx); err != nil {
+		s.logger.Warn("booking service health check failed", "error", err)
+		unhealthyServices = append(unhealthyServices, "booking")
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("one or more services are unhealthy: %v", errs)
+	// BFF is considered ready even if downstream services are unhealthy
+	// This allows the BFF to serve cached data and provide graceful degradation
+	if len(unhealthyServices) > 0 {
+		s.logger.Warn("bff is ready but some downstream services are unhealthy",
+			"unhealthy_services", unhealthyServices)
 	}
 
 	return nil

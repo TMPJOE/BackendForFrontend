@@ -16,24 +16,25 @@ type HotelClient struct {
 
 // Hotel represents a hotel from the Hotel Service
 type Hotel struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Address     string    `json:"address"`
-	City        string    `json:"city"`
-	Country     string    `json:"country"`
-	Rating      float64   `json:"rating"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string    `json:"id" db:"id"`
+	AdminID     string    `json:"admin_id" db:"admin_id"`
+	Name        string    `json:"name" db:"name"`
+	City        string    `json:"city" db:"city"`
+	Description string    `json:"description" db:"description"`
+	Rating      float64   `json:"rating" db:"rating"`
+	Lat         float64   `json:"lat" db:"lat"`
+	Lng         float64   `json:"lng" db:"lng"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // CreateHotelRequest represents the request to create a hotel
 type CreateHotelRequest struct {
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description"`
-	Address     string `json:"address" validate:"required"`
-	City        string `json:"city" validate:"required"`
-	Country     string `json:"country" validate:"required"`
+	Name        string  `json:"name" validate:"required"`
+	Description string  `json:"description"`
+	Address     string  `json:"address" validate:"required"`
+	City        string  `json:"city" validate:"required"`
+	Country     string  `json:"country" validate:"required"`
 	Rating      float64 `json:"rating"`
 }
 

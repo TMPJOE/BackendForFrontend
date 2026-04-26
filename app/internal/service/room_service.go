@@ -24,9 +24,8 @@ func (s *BFFService) GetRoom(ctx context.Context, roomID string) (*models.Room, 
 	return mapRoomClientToModel(room, hotelName), nil
 }
 
-// CreateRoom creates a new room after validating the hotel exists
+// CreateRoom creates a new room after validating the hotel exists.
 // BRIDGE: Validates hotel exists (Hotel Service), then creates room (Room Service)
-// This prevents orphaned rooms and provides clear error messages
 func (s *BFFService) CreateRoom(ctx context.Context, req *models.CreateRoomRequest) (*models.Room, error) {
 	// BRIDGE: Validate hotel exists first
 	hotel, err := s.hotelClient.GetHotel(ctx, req.HotelID)
@@ -37,12 +36,10 @@ func (s *BFFService) CreateRoom(ctx context.Context, req *models.CreateRoomReque
 	// Forward to Room Service
 	createReq := &client.CreateRoomRequest{
 		HotelID:     req.HotelID,
-		RoomNumber:  req.RoomNumber,
 		Type:        req.Type,
 		Description: req.Description,
 		Price:       req.Price,
 		Capacity:    req.Capacity,
-		Amenities:   req.Amenities,
 	}
 
 	room, err := s.roomClient.CreateRoom(ctx, createReq)

@@ -13,11 +13,9 @@ jwt:
 
 # Downstream microservice URLs
 downstream_services:
-  hotel_service_url: "${HOTEL_SERVICE_URL:http://localhost:8084}"
-  room_service_url: "${ROOM_SERVICE_URL:http://localhost:8085}"
-  booking_service_url: "${BOOKING_SERVICE_URL:http://localhost:8086}"
-  reservation_service_url: "${BOOKING_SERVICE_URL:http://localhost:8086}"
-  media_service_url: "${MEDIA_SERVICE_URL:http://localhost:8082}"
+  hotel_service_url: "http://hotel-service:8084"
+  room_service_url: "http://rooms-service:8085"
+  booking_service_url: "http://booking-service:8086"
   timeout: 30s
 
 rate_limit:

@@ -49,35 +49,17 @@ func NewBaseClient(baseURL string, timeout time.Duration, logger *slog.Logger) *
 
 // Do executes an HTTP request
 func (c *BaseClient) Do(method, path string, body interface{}) (*http.Response, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(jsonBody)
-	}
-
-	url := c.BaseURL + path
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	c.Logger.Debug("making downstream request",
-		"method", method,
-		"url", url,
-	)
-
-	return c.HTTPClient.Do(req)
+	return c.DoWithContext(context.Background(), method, path, body)
 }
 
 // DoWithContext executes an HTTP request with context
 func (c *BaseClient) DoWithContext(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+	token := GetTokenFromContext(ctx)
+	return c.DoWithAuth(ctx, method, path, body, token)
+}
+
+// DoWithAuth executes an HTTP request with context and authorization header
+func (c *BaseClient) DoWithAuth(ctx context.Context, method, path string, body interface{}, authToken string) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
@@ -97,10 +79,32 @@ func (c *BaseClient) DoWithContext(ctx context.Context, method, path string, bod
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	// Add authorization header if token is provided
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+
 	c.Logger.Debug("making downstream request",
 		"method", method,
 		"url", url,
 	)
 
 	return c.HTTPClient.Do(req)
+}
+
+// contextKey is the type for context keys
+type contextKey string
+
+// TokenContextKey is the key for storing auth token in context
+const TokenContextKey contextKey = "auth_token"
+
+// WithToken adds an auth token to the context
+func WithToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, TokenContextKey, token)
+}
+
+// GetTokenFromContext extracts the auth token from context
+func GetTokenFromContext(ctx context.Context) string {
+	token, _ := ctx.Value(TokenContextKey).(string)
+	return token
 }

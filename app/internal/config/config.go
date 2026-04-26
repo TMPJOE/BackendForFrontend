@@ -102,5 +102,16 @@ func Load(path string) (*Config, error) {
 		cfg.JWT.Issuer = "bff-service"
 	}
 
+	// Set defaults for downstream service URLs if not provided via env vars
+	if cfg.DownstreamServices.HotelServiceURL == "" {
+		cfg.DownstreamServices.HotelServiceURL = "http://localhost:8084"
+	}
+	if cfg.DownstreamServices.RoomServiceURL == "" {
+		cfg.DownstreamServices.RoomServiceURL = "http://localhost:8085"
+	}
+	if cfg.DownstreamServices.BookingServiceURL == "" {
+		cfg.DownstreamServices.BookingServiceURL = "http://localhost:8086"
+	}
+
 	return &cfg, nil
 }

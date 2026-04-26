@@ -144,8 +144,10 @@ func (c *RoomClient) GetRoomsByHotel(ctx context.Context, hotelID string) ([]Roo
 }
 
 // CreateRoom creates a new room
+// Calls POST /hotels/{hotel_id}/rooms endpoint in Room Service
 func (c *RoomClient) CreateRoom(ctx context.Context, req *CreateRoomRequest) (*Room, error) {
-	resp, err := c.DoWithContext(ctx, http.MethodPost, "/rooms", req)
+	path := fmt.Sprintf("/hotels/%s/rooms", req.HotelID)
+	resp, err := c.DoWithContext(ctx, http.MethodPost, path, req)
 	if err != nil {
 		return nil, fmt.Errorf("create room request failed: %w", err)
 	}
@@ -155,12 +157,23 @@ func (c *RoomClient) CreateRoom(ctx context.Context, req *CreateRoomRequest) (*R
 		return nil, fmt.Errorf("create room returned status %d", resp.StatusCode)
 	}
 
-	var room Room
-	if err := json.NewDecoder(resp.Body).Decode(&room); err != nil {
+	// Room service returns an array of created rooms (one per quantity)
+	var rooms []Room
+	if err := json.NewDecoder(resp.Body).Decode(&rooms); err != nil {
+		// Try decoding as single room (fallback)
+		resp.Body.Close()
+		var singleRoom Room
+		if err2 := json.Unmarshal([]byte(resp.Body.(interface{}).(string)), &singleRoom); err2 == nil {
+			return &singleRoom, nil
+		}
 		return nil, fmt.Errorf("decode room response: %w", err)
 	}
 
-	return &room, nil
+	// Return the first room
+	if len(rooms) > 0 {
+		return &rooms[0], nil
+	}
+	return nil, fmt.Errorf("no rooms created")
 }
 
 // UpdateRoom updates an existing room

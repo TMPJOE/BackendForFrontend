@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
+	"hotel.com/app/internal/client"
 	"hotel.com/app/internal/helper"
 )
 
@@ -236,6 +237,7 @@ func (j *JWTAuthenticator) Middleware() func(http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
 			ctx = context.WithValue(ctx, ClaimsKey, claims)
+			ctx = client.WithToken(ctx, tokenString)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
