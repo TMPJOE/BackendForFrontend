@@ -33,17 +33,37 @@ func (s *BFFService) CreateRoom(ctx context.Context, req *models.CreateRoomReque
 		return nil, err
 	}
 
+	highlighted := make([]client.HighlightedAmenity, len(req.HighlightedAmenities))
+	for i, a := range req.HighlightedAmenities {
+		highlighted[i] = client.HighlightedAmenity{
+			Icon: a.Icon,
+			Text: a.Text,
+		}
+	}
+
+	categories := make([]client.AmenityCategory, len(req.AmenityCategories))
+	for i, c := range req.AmenityCategories {
+		categories[i] = client.AmenityCategory{
+			Name:         c.Name,
+			Description:  c.Description,
+			Tier:         c.Tier,
+			AmenityCount: c.AmenityCount,
+		}
+	}
+
 	// Forward to Room Service
 	createReq := &client.CreateRoomRequest{
-		HotelID:         req.HotelID,
-		Name:            req.Name,
-		Type:            req.Type,
-		Description:     req.Description,
-		Price:           req.Price,
-		Capacity:        req.Capacity,
-		SpaceInfo:       req.SpaceInfo,
-		BedDistribution: req.BedDistribution,
-		Quantity:        req.Quantity,
+		HotelID:              req.HotelID,
+		Name:                 req.Name,
+		Type:                 req.Type,
+		Description:          req.Description,
+		Price:                req.Price,
+		Capacity:             req.Capacity,
+		SpaceInfo:            req.SpaceInfo,
+		BedDistribution:      req.BedDistribution,
+		Quantity:             req.Quantity,
+		HighlightedAmenities: highlighted,
+		AmenityCategories:    categories,
 	}
 
 	room, err := s.roomClient.CreateRoom(ctx, createReq)

@@ -16,31 +16,63 @@ type RoomClient struct {
 
 // Room represents a room from the Room Service
 type Room struct {
-	ID          string    `json:"id"`
-	HotelID     string    `json:"hotel_id"`
-	RoomNumber  string    `json:"room_number"`
-	Type        string    `json:"type"`
-	Description string    `json:"description"`
-	Price       float64   `json:"price"`
-	Capacity    int       `json:"capacity"`
-	Amenities   []string  `json:"amenities"`
-	IsAvailable bool      `json:"is_available"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                   string               `json:"id"`
+	HotelID              string               `json:"hotel_id"`
+	Name                 string               `json:"name"`
+	Type                 string               `json:"type"`
+	Price                float64              `json:"price"`
+	Capacity             int                  `json:"capacity"`
+	Description          string               `json:"description"`
+	SpaceInfo            string               `json:"space_info"`
+	BedDistribution      string               `json:"bed_distribution"`
+	Quantity             int                  `json:"quantity"`
+	AmenityCount         int                  `json:"amenity_count"`
+	RecommendationCoef   float64              `json:"recommendation_coef"`
+	HighlightedAmenities []HighlightedAmenity `json:"highlighted_amenities"`
+	AmenityCategories    []AmenityCategory    `json:"amenity_categories"`
+	CreatedAt            time.Time            `json:"created_at"`
+	UpdatedAt            time.Time            `json:"updated_at"`
+}
+
+type HighlightedAmenity struct {
+	ID        string    `json:"id"`
+	RoomID    string    `json:"room_id"`
+	Icon      string    `json:"icon"`
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AmenityCategory struct {
+	ID           string    `json:"id"`
+	RoomID       string    `json:"room_id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Tier         string    `json:"tier"`
+	AmenityCount int       `json:"amenity_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// RoomListResponse is used to parse the paginated response
+type RoomListResponse struct {
+	Rooms      []Room `json:"rooms"`
+	TotalCount int    `json:"total_count"`
 }
 
 // CreateRoomRequest represents the request to create a room
 type CreateRoomRequest struct {
-	HotelID         string   `json:"hotel_id" validate:"required"`
-	Name            string   `json:"name" validate:"required"`
-	Type            string   `json:"type" validate:"required"`
-	Description     string   `json:"description" validate:"required"`
-	Price           float64  `json:"price" validate:"required,gt=0"`
-	Capacity        int      `json:"capacity" validate:"required,gt=0"`
-	SpaceInfo       string   `json:"space_info" validate:"required"`
-	BedDistribution string   `json:"bed_distribution" validate:"required"`
-	Quantity        int      `json:"quantity" validate:"required,gt=0"`
-	Amenities       []string `json:"amenities"`
+	HotelID              string               `json:"hotel_id" validate:"required"`
+	Name                 string               `json:"name" validate:"required"`
+	Type                 string               `json:"type" validate:"required"`
+	Price                float64              `json:"price" validate:"required,gt=0"`
+	Capacity             int                  `json:"capacity" validate:"required,gt=0"`
+	Description          string               `json:"description" validate:"required"`
+	SpaceInfo            string               `json:"space_info" validate:"required"`
+	BedDistribution      string               `json:"bed_distribution" validate:"required"`
+	Quantity             int                  `json:"quantity" validate:"required,gt=0"`
+	HighlightedAmenities []HighlightedAmenity `json:"highlighted_amenities" validate:"omitempty,dive"`
+	AmenityCategories    []AmenityCategory    `json:"amenity_categories" validate:"omitempty,dive"`
 }
 
 // UpdateRoomRequest represents the request to update a room
@@ -113,12 +145,12 @@ func (c *RoomClient) GetRooms(ctx context.Context, filter RoomFilter) ([]Room, e
 		return nil, fmt.Errorf("get rooms returned status %d", resp.StatusCode)
 	}
 
-	var rooms []Room
-	if err := json.NewDecoder(resp.Body).Decode(&rooms); err != nil {
+	var result RoomListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode rooms response: %w", err)
 	}
 
-	return rooms, nil
+	return result.Rooms, nil
 }
 
 // GetRoomsByHotel retrieves all rooms for a specific hotel
@@ -138,12 +170,12 @@ func (c *RoomClient) GetRoomsByHotel(ctx context.Context, hotelID string) ([]Roo
 		return nil, fmt.Errorf("get rooms by hotel returned status %d", resp.StatusCode)
 	}
 
-	var rooms []Room
-	if err := json.NewDecoder(resp.Body).Decode(&rooms); err != nil {
+	var result RoomListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode rooms response: %w", err)
 	}
 
-	return rooms, nil
+	return result.Rooms, nil
 }
 
 // CreateRoom creates a new room
@@ -163,12 +195,6 @@ func (c *RoomClient) CreateRoom(ctx context.Context, req *CreateRoomRequest) (*R
 	// Room service returns an array of created rooms (one per quantity)
 	var rooms []Room
 	if err := json.NewDecoder(resp.Body).Decode(&rooms); err != nil {
-		// Try decoding as single room (fallback)
-		resp.Body.Close()
-		var singleRoom Room
-		if err2 := json.Unmarshal([]byte(resp.Body.(interface{}).(string)), &singleRoom); err2 == nil {
-			return &singleRoom, nil
-		}
 		return nil, fmt.Errorf("decode room response: %w", err)
 	}
 

@@ -112,6 +112,12 @@ func Load(path string) (*Config, error) {
 	if cfg.DownstreamServices.BookingServiceURL == "" {
 		cfg.DownstreamServices.BookingServiceURL = "http://localhost:8086"
 	}
+	if cfg.DownstreamServices.ReservationServiceURL == "" {
+		cfg.DownstreamServices.ReservationServiceURL = "http://localhost:8086"
+	}
+	if cfg.DownstreamServices.MediaServiceURL == "" {
+		cfg.DownstreamServices.MediaServiceURL = "http://localhost:8082"
+	}
 
 	return &cfg, nil
 }

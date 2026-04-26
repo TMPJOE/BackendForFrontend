@@ -39,9 +39,9 @@ func (s *BFFService) GetReservationDetails(ctx context.Context, reservationID st
 	}
 
 	return &models.BookingDetails{
-		Booking: *mapBookingClientToModel(booking),
-		Hotel:   *mapHotelClientToModel(hotel),
-		Room:    *mapRoomClientToModel(room, hotel.Name),
+		Reservation: *mapBookingClientToModel(booking),
+		Hotel:       *mapHotelClientToModel(hotel),
+		Room:        *mapRoomClientToModel(room, hotel.Name),
 	}, nil
 }
 

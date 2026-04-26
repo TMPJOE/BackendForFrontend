@@ -94,15 +94,50 @@ func mapRoomClientToModel(r *client.Room, _ string) *models.Room {
 	if r == nil {
 		return nil
 	}
+	
+	highlighted := make([]models.HighlightedAmenity, len(r.HighlightedAmenities))
+	for i, a := range r.HighlightedAmenities {
+		highlighted[i] = models.HighlightedAmenity{
+			ID:        a.ID,
+			RoomID:    a.RoomID,
+			Icon:      a.Icon,
+			Text:      a.Text,
+			CreatedAt: a.CreatedAt,
+			UpdatedAt: a.UpdatedAt,
+		}
+	}
+
+	categories := make([]models.AmenityCategory, len(r.AmenityCategories))
+	for i, c := range r.AmenityCategories {
+		categories[i] = models.AmenityCategory{
+			ID:           c.ID,
+			RoomID:       c.RoomID,
+			Name:         c.Name,
+			Description:  c.Description,
+			Tier:         c.Tier,
+			AmenityCount: c.AmenityCount,
+			CreatedAt:    c.CreatedAt,
+			UpdatedAt:    c.UpdatedAt,
+		}
+	}
+
 	return &models.Room{
-		ID:          r.ID,
-		HotelID:     r.HotelID,
-		Type:        r.Type,
-		Description: r.Description,
-		Price:       r.Price,
-		Capacity:    r.Capacity,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+		ID:                   r.ID,
+		HotelID:              r.HotelID,
+		Name:                 r.Name,
+		Type:                 r.Type,
+		Price:                r.Price,
+		Capacity:             r.Capacity,
+		Description:          r.Description,
+		SpaceInfo:            r.SpaceInfo,
+		BedDistribution:      r.BedDistribution,
+		Quantity:             r.Quantity,
+		AmenityCount:         r.AmenityCount,
+		RecommendationCoef:   r.RecommendationCoef,
+		HighlightedAmenities: highlighted,
+		AmenityCategories:    categories,
+		CreatedAt:            r.CreatedAt,
+		UpdatedAt:            r.UpdatedAt,
 	}
 }
 

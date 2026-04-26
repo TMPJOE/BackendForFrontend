@@ -31,6 +31,7 @@ type Room struct {
 	Description          string               `json:"description"`
 	SpaceInfo            string               `json:"space_info"`
 	BedDistribution      string               `json:"bed_distribution"`
+	Quantity             int                  `json:"quantity"`
 	AmenityCount         int                  `json:"amenity_count"`
 	RecommendationCoef   float64              `json:"recommendation_coef"`
 	HighlightedAmenities []HighlightedAmenity `json:"highlighted_amenities"`
@@ -40,13 +41,23 @@ type Room struct {
 }
 
 type HighlightedAmenity struct {
-	Icon string `json:"icon"`
-	Text string `json:"text"`
+	ID        string    `json:"id,omitempty"`
+	RoomID    string    `json:"room_id,omitempty"`
+	Icon      string    `json:"icon"`
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 type AmenityCategory struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID           string    `json:"id,omitempty"`
+	RoomID       string    `json:"room_id,omitempty"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Tier         string    `json:"tier"`
+	AmenityCount int       `json:"amenity_count"`
+	CreatedAt    time.Time `json:"created_at,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
 }
 
 // Booking represents booking/reservation data from the Booking Service.
@@ -71,9 +82,9 @@ type Booking struct {
 // BookingDetails is a composite model that includes full hotel and room data
 // alongside the booking — returned by the /reservations/{id}/details endpoint.
 type BookingDetails struct {
-	Booking Booking `json:"booking"`
-	Hotel   Hotel   `json:"hotel"`
-	Room    Room    `json:"room"`
+	Reservation Booking `json:"reservation"`
+	Hotel       Hotel   `json:"hotel"`
+	Room        Room    `json:"room"`
 }
 
 // HotelWithRooms is a composite model that includes hotel data and its rooms
