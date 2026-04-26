@@ -8,49 +8,17 @@ import (
 	"hotel.com/app/internal/models"
 )
 
-// parseTime parses a time string in multiple formats
-func parseTime(t string) (time.Time, error) {
-	// Try RFC3339 first
-	if parsed, err := time.Parse(time.RFC3339, t); err == nil {
-		return parsed, nil
-	}
-	// Try date-only format
-	if parsed, err := time.Parse("2006-01-02", t); err == nil {
-		return parsed, nil
-	}
-	// Try datetime format
-	if parsed, err := time.Parse("2006-01-02T15:04:05", t); err == nil {
-		return parsed, nil
-	}
-	return time.Time{}, client.ErrInvalidDates
-}
-
-// calculateNights calculates the number of nights between check-in and check-out
-func calculateNights(checkIn, checkOut time.Time) int {
-	duration := checkOut.Sub(checkIn)
-	nights := int(duration.Hours() / 24)
-	if nights < 1 {
-		return 1
-	}
-	return nights
-}
-
-// calculateTotalAmount calculates the total price for a stay
-func calculateTotalAmount(pricePerNight float64, nights int) float64 {
-	return pricePerNight * float64(nights)
-}
-
 // GetReservation retrieves a single reservation by ID
+// PASSTHROUGH: Directly forwards to Reservation Service (with enrichment)
 func (s *BFFService) GetReservation(ctx context.Context, reservationID string) (*models.Reservation, error) {
 	reservation, err := s.reservationClient.GetReservation(ctx, reservationID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Enrich with hotel and room names
+	// Enrich with hotel and room names (best effort)
 	hotelName := ""
 	roomNumber := ""
-
 	if hotel, err := s.hotelClient.GetHotel(ctx, reservation.HotelID); err == nil {
 		hotelName = hotel.Name
 	}
@@ -62,20 +30,22 @@ func (s *BFFService) GetReservation(ctx context.Context, reservationID string) (
 }
 
 // GetReservationDetails retrieves a reservation with full hotel and room details
+// AGGREGATION: Calls 3 services, merges response
+// This is a BFF value-add: frontend gets everything in one call
 func (s *BFFService) GetReservationDetails(ctx context.Context, reservationID string) (*models.ReservationDetails, error) {
-	// Fetch reservation
+	// Fetch reservation from Reservation Service
 	reservation, err := s.reservationClient.GetReservation(ctx, reservationID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch hotel details
+	// Fetch hotel details from Hotel Service
 	hotel, err := s.hotelClient.GetHotel(ctx, reservation.HotelID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch room details
+	// Fetch room details from Room Service
 	room, err := s.roomClient.GetRoom(ctx, reservation.RoomID)
 	if err != nil {
 		return nil, err
@@ -88,8 +58,9 @@ func (s *BFFService) GetReservationDetails(ctx context.Context, reservationID st
 	}, nil
 }
 
-// GetReservationsByUser retrieves all reservations for a specific user
-func (s *BFFService) GetReservationsByUser(ctx context.Context, userID string) ([]models.Reservation, error) {
+// GetReservations retrieves all reservations for a user
+// PASSTHROUGH: Directly forwards to Reservation Service (with enrichment)
+func (s *BFFService) GetReservations(ctx context.Context, userID string) ([]models.Reservation, error) {
 	reservations, err := s.reservationClient.GetReservationsByUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -97,10 +68,9 @@ func (s *BFFService) GetReservationsByUser(ctx context.Context, userID string) (
 
 	result := make([]models.Reservation, len(reservations))
 	for i, r := range reservations {
-		// Enrich with hotel and room names
+		// Enrich with hotel and room names (best effort)
 		hotelName := ""
 		roomNumber := ""
-
 		if hotel, err := s.hotelClient.GetHotel(ctx, r.HotelID); err == nil {
 			hotelName = hotel.Name
 		}
@@ -115,14 +85,16 @@ func (s *BFFService) GetReservationsByUser(ctx context.Context, userID string) (
 }
 
 // CreateReservation creates a new reservation after validating hotel and room exist
+// BRIDGE: Validates hotel + room exist, calculates total, then creates reservation
+// This is a BFF value-add: orchestrates complex validation across services
 func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *models.CreateReservationRequest) (*models.Reservation, error) {
-	// Validate hotel exists
+	// BRIDGE: Validate hotel exists
 	hotel, err := s.hotelClient.GetHotel(ctx, req.HotelID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate room exists and belongs to the hotel
+	// BRIDGE: Validate room exists and belongs to the hotel
 	room, err := s.roomClient.GetRoom(ctx, req.RoomID)
 	if err != nil {
 		return nil, err
@@ -132,32 +104,32 @@ func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *
 		return nil, client.ErrInvalidReservationData
 	}
 
-	// Validate dates
-	checkInTime, err := parseTime(req.CheckIn.Format(time.RFC3339))
+	// Parse and validate dates
+	checkIn, err := parseTime(req.CheckIn.Format(time.RFC3339))
 	if err != nil {
 		return nil, client.ErrInvalidDates
 	}
 
-	checkOutTime, err := parseTime(req.CheckOut.Format(time.RFC3339))
+	checkOut, err := parseTime(req.CheckOut.Format(time.RFC3339))
 	if err != nil {
 		return nil, client.ErrInvalidDates
 	}
 
-	// Check check-in is not in the past
-	if checkInTime.Before(time.Now().Truncate(24 * time.Hour)) {
+	// Validate check-in is not in the past
+	if checkIn.Before(time.Now().Truncate(24 * time.Hour)) {
 		return nil, client.ErrPastCheckIn
 	}
 
-	// Check check-out is after check-in
-	if !checkOutTime.After(checkInTime) {
+	// Validate check-out is after check-in
+	if !checkOut.After(checkIn) {
 		return nil, client.ErrCheckOutBeforeCheckIn
 	}
 
 	// Calculate total amount
-	nights := calculateNights(checkInTime, checkOutTime)
+	nights := calculateNights(checkIn, checkOut)
 	totalAmount := calculateTotalAmount(room.Price, nights)
 
-	// Create the reservation
+	// Forward to Reservation Service
 	createReq := &client.CreateReservationRequest{
 		HotelID:     req.HotelID,
 		RoomID:      req.RoomID,
@@ -165,8 +137,8 @@ func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *
 		GuestName:   req.GuestName,
 		GuestEmail:  req.GuestEmail,
 		GuestPhone:  req.GuestPhone,
-		CheckIn:     checkInTime,
-		CheckOut:    checkOutTime,
+		CheckIn:     checkIn,
+		CheckOut:    checkOut,
 		TotalAmount: totalAmount,
 		Notes:       req.Notes,
 	}
@@ -176,65 +148,6 @@ func (s *BFFService) CreateReservation(ctx context.Context, userID string, req *
 		return nil, err
 	}
 
+	// Return reservation with enriched data
 	return mapReservationClientToModel(reservation, hotel.Name, room.RoomNumber), nil
-}
-
-// UpdateReservation updates an existing reservation
-func (s *BFFService) UpdateReservation(ctx context.Context, reservationID string, req *models.UpdateReservationRequest) (*models.Reservation, error) {
-	// Verify reservation exists
-	existingReservation, err := s.reservationClient.GetReservation(ctx, reservationID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch hotel and room names for enrichment
-	hotelName := ""
-	roomNumber := ""
-	if hotel, err := s.hotelClient.GetHotel(ctx, existingReservation.HotelID); err == nil {
-		hotelName = hotel.Name
-	}
-	if room, err := s.roomClient.GetRoom(ctx, existingReservation.RoomID); err == nil {
-		roomNumber = room.RoomNumber
-	}
-
-	// Build update request
-	updateReq := &client.UpdateReservationRequest{
-		GuestName:  req.GuestName,
-		GuestEmail: req.GuestEmail,
-		GuestPhone: req.GuestPhone,
-		Notes:      req.Notes,
-	}
-
-	// Only update dates if both are provided
-	if !req.CheckIn.IsZero() && !req.CheckOut.IsZero() {
-		updateReq.CheckIn = req.CheckIn
-		updateReq.CheckOut = req.CheckOut
-	}
-
-	reservation, err := s.reservationClient.UpdateReservation(ctx, reservationID, updateReq)
-	if err != nil {
-		return nil, err
-	}
-
-	return mapReservationClientToModel(reservation, hotelName, roomNumber), nil
-}
-
-// CancelReservation cancels a reservation
-func (s *BFFService) CancelReservation(ctx context.Context, reservationID string) error {
-	// Verify reservation exists
-	if _, err := s.reservationClient.GetReservation(ctx, reservationID); err != nil {
-		return err
-	}
-
-	return s.reservationClient.CancelReservation(ctx, reservationID)
-}
-
-// DeleteReservation deletes a reservation by ID
-func (s *BFFService) DeleteReservation(ctx context.Context, reservationID string) error {
-	// Verify reservation exists
-	if _, err := s.reservationClient.GetReservation(ctx, reservationID); err != nil {
-		return err
-	}
-
-	return s.reservationClient.DeleteReservation(ctx, reservationID)
 }

@@ -7,57 +7,51 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"hotel.com/app/internal/client"
 	"hotel.com/app/internal/models"
 )
 
-// Service defines the interface for BFF business logic
+// Service defines the minimal interface for BFF business logic
+// Only includes operations that aggregate data or bridge service calls
+// The BFF is NOT a passthrough - it only adds value when orchestrating
+
 type Service interface {
-	// Health checks
+	// Health checks downstream services
 	Check(ctx context.Context) error
 
-	// Hotel operations
-	GetHotel(ctx context.Context, hotelID string) (*models.Hotel, error)
+	// HOTEL OPERATIONS
+	// GetHotels - simple passthrough (frontend needs for navigation)
 	GetHotels(ctx context.Context, city, country string) ([]models.Hotel, error)
-	CreateHotel(ctx context.Context, req *models.CreateHotelRequest) (*models.Hotel, error)
-	UpdateHotel(ctx context.Context, hotelID string, req *models.UpdateHotelRequest) (*models.Hotel, error)
-	DeleteHotel(ctx context.Context, hotelID string) error
-
-	// Room operations
-	GetRoom(ctx context.Context, roomID string) (*models.Room, error)
-	GetRoomsByHotel(ctx context.Context, hotelID string) ([]models.Room, error)
-	CreateRoom(ctx context.Context, req *models.CreateRoomRequest) (*models.Room, error)
-	UpdateRoom(ctx context.Context, roomID string, req *models.UpdateRoomRequest) (*models.Room, error)
-	DeleteRoom(ctx context.Context, roomID string) error
-	CheckAvailability(ctx context.Context, roomID string, checkIn, checkOut string) (bool, error)
-
-	// Reservation operations
-	GetReservation(ctx context.Context, reservationID string) (*models.Reservation, error)
-	GetReservationDetails(ctx context.Context, reservationID string) (*models.ReservationDetails, error)
-	GetReservationsByUser(ctx context.Context, userID string) ([]models.Reservation, error)
-	CreateReservation(ctx context.Context, userID string, req *models.CreateReservationRequest) (*models.Reservation, error)
-	UpdateReservation(ctx context.Context, reservationID string, req *models.UpdateReservationRequest) (*models.Reservation, error)
-	CancelReservation(ctx context.Context, reservationID string) error
-	DeleteReservation(ctx context.Context, reservationID string) error
-
-	// Composite operations
+	// GetHotel - simple passthrough
+	GetHotel(ctx context.Context, hotelID string) (*models.Hotel, error)
+	// GetHotelWithRooms - AGGREGATION: hotel + rooms from different services
 	GetHotelWithRooms(ctx context.Context, hotelID string) (*models.HotelWithRooms, error)
+
+	// ROOM OPERATIONS
+	// GetRoom - simple passthrough (frontend needs for detail view)
+	GetRoom(ctx context.Context, roomID string) (*models.Room, error)
+	// CreateRoom - BRIDGE: validates hotel exists, then creates room
+	CreateRoom(ctx context.Context, req *models.CreateRoomRequest) (*models.Room, error)
+
+	// RESERVATION OPERATIONS
+	// GetReservations - simple passthrough (user's own reservations)
+	GetReservations(ctx context.Context, userID string) ([]models.Reservation, error)
+	// GetReservation - simple passthrough
+	GetReservation(ctx context.Context, reservationID string) (*models.Reservation, error)
+	// GetReservationDetails - AGGREGATION: reservation + hotel + room merged
+	GetReservationDetails(ctx context.Context, reservationID string) (*models.ReservationDetails, error)
+	// CreateReservation - BRIDGE: validates hotel + room exist, calculates total, creates reservation
+	CreateReservation(ctx context.Context, userID string, req *models.CreateReservationRequest) (*models.Reservation, error)
 }
 
 // BFFService implements the Service interface
 type BFFService struct {
-	logger      *slog.Logger
-	hotelClient *client.HotelClient
-	roomClient  *client.RoomClient
+	logger            *slog.Logger
+	hotelClient       *client.HotelClient
+	roomClient        *client.RoomClient
 	reservationClient *client.ReservationClient
-}
-
-// Config holds configuration for the service layer
-type Config struct {
-	HotelServiceURL       string
-	RoomServiceURL        string
-	ReservationServiceURL string
 }
 
 // New creates a new BFFService with the given dependencies
@@ -68,9 +62,9 @@ func New(
 	reservationClient *client.ReservationClient,
 ) Service {
 	return &BFFService{
-		logger:      logger,
-		hotelClient: hotelClient,
-		roomClient:  roomClient,
+		logger:            logger,
+		hotelClient:       hotelClient,
+		roomClient:        roomClient,
 		reservationClient: reservationClient,
 	}
 }
@@ -139,24 +133,56 @@ func mapReservationClientToModel(r *client.Reservation, hotelName, roomNumber st
 	}
 }
 
+// calculateNights calculates the number of nights between check-in and check-out
+func calculateNights(checkIn, checkOut time.Time) int {
+	duration := checkOut.Sub(checkIn)
+	nights := int(duration.Hours() / 24)
+	if nights < 1 {
+		return 1
+	}
+	return nights
+}
+
+// calculateTotalAmount calculates the total price for a stay
+func calculateTotalAmount(pricePerNight float64, nights int) float64 {
+	return pricePerNight * float64(nights)
+}
+
+// parseTime parses a time string in multiple formats
+func parseTime(t string) (time.Time, error) {
+	// Try RFC3339 first
+	if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+		return parsed, nil
+	}
+	// Try date-only format
+	if parsed, err := time.Parse("2006-01-02", t); err == nil {
+		return parsed, nil
+	}
+	// Try datetime format
+	if parsed, err := time.Parse("2006-01-02T15:04:05", t); err == nil {
+		return parsed, nil
+	}
+	return time.Time{}, client.ErrInvalidDates
+}
+
 // Check performs a health check on all downstream services
 func (s *BFFService) Check(ctx context.Context) error {
-	var errors []error
+	var errs []error
 
 	if err := s.hotelClient.Health(ctx); err != nil {
-		errors = append(errors, fmt.Errorf("hotel service: %w", err))
+		errs = append(errs, fmt.Errorf("hotel service: %w", err))
 	}
 
 	if err := s.roomClient.Health(ctx); err != nil {
-		errors = append(errors, fmt.Errorf("room service: %w", err))
+		errs = append(errs, fmt.Errorf("room service: %w", err))
 	}
 
 	if err := s.reservationClient.Health(ctx); err != nil {
-		errors = append(errors, fmt.Errorf("reservation service: %w", err))
+		errs = append(errs, fmt.Errorf("reservation service: %w", err))
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("one or more services are unhealthy: %v", errors)
+	if len(errs) > 0 {
+		return fmt.Errorf("one or more services are unhealthy: %v", errs)
 	}
 
 	return nil

@@ -8,7 +8,8 @@ import (
 	"github.com/go-chi/httplog/v3"
 )
 
-// NewServerMux creates and configures the HTTP router with all BFF routes
+// NewServerMux creates and configures the HTTP router with minimal BFF routes
+// Only exposes endpoints that aggregate data or bridge service calls
 func (h *Handler) NewServerMux(rateLimiter *RateLimiter) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -41,44 +42,30 @@ func (h *Handler) NewServerMux(rateLimiter *RateLimiter) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(h.jwtAuth.Middleware())
 
-		// Hotel routes
-		r.Route("/hotels", func(r chi.Router) {
-			r.Get("/", h.GetHotels)
-			r.Post("/", h.CreateHotel)
+		// HOTEL AGGREGATION ENDPOINTS
+		// Get hotel with all its rooms (merged response)
+		r.Get("/hotels/{hotelId}/details", h.GetHotelWithRooms)
 
-			r.Route("/{hotelId}", func(r chi.Router) {
-				r.Get("/", h.GetHotel)
-				r.Put("/", h.UpdateHotel)
-				r.Delete("/", h.DeleteHotel)
-				r.Get("/details", h.GetHotelWithRooms)
+		// Simple passthrough for hotel list/detail (frontend needs these for navigation)
+		r.Get("/hotels", h.GetHotels)
+		r.Get("/hotels/{hotelId}", h.GetHotel)
 
-				// Room routes nested under hotel
-				r.Get("/rooms", h.GetRoomsByHotel)
-				r.Post("/rooms", h.CreateRoom)
-			})
-		})
+		// BRIDGE: Create room - BFF verifies hotel exists first, then forwards to Room Service
+		r.Post("/hotels/{hotelId}/rooms", h.CreateRoom)
 
-		// Room routes (direct access)
-		r.Route("/rooms", func(r chi.Router) {
-			r.Get("/{roomId}", h.GetRoom)
-			r.Put("/{roomId}", h.UpdateRoom)
-			r.Delete("/{roomId}", h.DeleteRoom)
-			r.Get("/{roomId}/availability", h.CheckAvailability)
-		})
+		// Simple passthrough for room detail (frontend needs this)
+		r.Get("/rooms/{roomId}", h.GetRoom)
 
-		// Reservation routes
-		r.Route("/reservations", func(r chi.Router) {
-			r.Get("/", h.GetReservations)
-			r.Post("/", h.CreateReservation)
+		// RESERVATION AGGREGATION ENDPOINTS
+		// Get reservation with full hotel and room details (merged response)
+		r.Get("/reservations/{reservationId}/details", h.GetReservationDetails)
 
-			r.Route("/{reservationId}", func(r chi.Router) {
-				r.Get("/", h.GetReservation)
-				r.Put("/", h.UpdateReservation)
-				r.Delete("/", h.DeleteReservation)
-				r.Get("/details", h.GetReservationDetails)
-				r.Patch("/cancel", h.CancelReservation)
-			})
-		})
+		// Simple passthrough for user's reservations
+		r.Get("/reservations", h.GetReservations)
+		r.Get("/reservations/{reservationId}", h.GetReservation)
+
+		// BRIDGE: Create reservation - BFF verifies hotel + room exist, calculates total, then forwards
+		r.Post("/reservations", h.CreateReservation)
 	})
 
 	return r

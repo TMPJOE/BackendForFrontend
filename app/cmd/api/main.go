@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	publicKeyPath  = "/app/keys/public.pem"
-	privateKeyPath = "/app/keys/private.pem"
+	publicKeyPath = "/app/keys/public.pem"
 )
 
 func main() {
@@ -62,11 +61,6 @@ func main() {
 	)
 	l.Info("Reservation Service client initialized", "url", cfg.DownstreamServices.ReservationServiceURL)
 
-	// JWT key file check
-	if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
-		l.Error("JWT private key file not found", "path", privateKeyPath)
-		os.Exit(1)
-	}
 	if _, err := os.Stat(publicKeyPath); os.IsNotExist(err) {
 		l.Error("JWT public key file not found", "path", publicKeyPath)
 		os.Exit(1)
@@ -87,7 +81,7 @@ func main() {
 		Issuer:     cfg.JWT.Issuer,
 		Expiration: jwtExpiration,
 	}
-	jwtAuth := handler.NewJWTAuthenticator(jwtConfig, privateKeyPath, publicKeyPath)
+	jwtAuth := handler.NewJWTAuthenticator(jwtConfig, publicKeyPath)
 
 	// Create HTTP handler
 	h := handler.New(svc, l, jwtAuth)

@@ -6,40 +6,44 @@ A Go-based Backend for Frontend service that aggregates data from multiple downs
 
 ```
 Client (Web/Mobile)
-    │
-    ▼
+│
+▼
 API Gateway (auth + redirect, stays thin)
-    │
-    ▼
+│
+▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    BFF Service (this)                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Hotel     │  │    Room     │  │   Reservation     │  │
-│  │   Client    │  │   Client    │  │      Client       │  │
-│  └──────┬──────┘  └──────┬──────┘  └─────────┬─────────┘  │
-│         │                │                    │            │
-│  ┌──────▼────────────────▼────────────────────▼──────────┐ │
-│  │              Service Layer (BFF)                     │ │
-│  │   - Orchestrates calls to downstream services       │ │
-│  │   - Aggregates responses                            │ │
-│  │   - Handles business logic                          │ │
-│  └──────┬──────────────────────────────────────────────┘ │
-│         │                                                 │
-│  ┌──────▼──────────────────────────────────────────────┐  │
-│  │              Handler Layer (HTTP API)                │  │
-│  └─────────────────────────────────────────────────────┘  │
+│ BFF Service (this)                                          │
+│ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐    │
+│ │ Hotel       │ │ Room        │ │ Reservation         │    │
+│ │ Client      │ │ Client      │ │ Client              │    │
+│ └──────┬──────┘ └──────┬──────┘ └─────────┬─────────┘    │
+│        │               │                  │              │
+│ ┌──────▼───────────────▼──────────────────▼──────────┐    │
+│ │ Service Layer (BFF)                                │    │
+│ │ - Orchestrates calls to downstream services        │    │
+│ │ - Aggregates responses                             │    │
+│ │ - Handles business logic                           │    │
+│ └──────┬─────────────────────────────────────────────┘    │
+│        │                                                  │
+│ ┌──────▼──────────────────────────────────────────────┐   │
+│ │ Handler Layer (HTTP API)                              │   │
+│ │ - Authentication (JWT-based)                          │   │
+│ │ - Request validation                                  │   │
+│ │ - Response formatting                                 │   │
+│ └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
-    │
-    ▼
+│
+▼
 Downstream Services
-├── Hotel Service      (port 8081)
-├── Room Service       (port 8082)
+├── Hotel Service (port 8081)
+├── Room Service (port 8082)
 └── Reservation Service (port 8083)
 ```
 
 ## What is a BFF?
 
 This service follows the **Backend for Frontend** pattern:
+
 - **No direct database access** - it only communicates with downstream services via HTTP
 - **Aggregates data** - combines data from multiple services into single responses
 - **Validates relationships** - ensures hotels exist before creating rooms, rooms exist before creating reservations
@@ -49,11 +53,11 @@ This service follows the **Backend for Frontend** pattern:
 ## Key Responsibilities
 
 ### 1. Data Aggregation
-- `GET /reservations/{id}/details` returns reservation + hotel + room data merged
-- `GET /hotels/{id}/details` returns hotel with all its rooms
+- `GET /hotels/{hotelId}/details` returns hotel + all rooms merged
+- `GET /reservations/{reservationId}/details` returns reservation + hotel + room data merged
 
 ### 2. Cross-Service Validation
-- `POST /hotels/{id}/rooms` validates hotel exists before creating room
+- `POST /hotels/{hotelId}/rooms` validates hotel exists before creating room
 - `POST /reservations` validates hotel + room exist, calculates total amount, checks availability
 
 ### 3. Business Logic
@@ -63,6 +67,7 @@ This service follows the **Backend for Frontend** pattern:
 
 ## Tech Stack
 
+- **Language**: Go 1.25
 - **Router**: [go-chi/chi/v5](https://github.com/go-chi/chi)
 - **Logging**: [go-chi/httplog/v3](https://github.com/go-chi/httplog) + `log/slog`
 - **JWT Authentication**: [golang-jwt/jwt/v5](https://github.com/golang-jwt/jwt)
@@ -73,12 +78,11 @@ This service follows the **Backend for Frontend** pattern:
 
 ### Security
 - **JWT Authentication**: RSA-based token validation
-- **Security Headers**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, HSTS, CSP
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, HSTS
 - **Request ID**: Unique request tracking for debugging and logging
 
 ### Resilience
 - **Rate Limiting**: Token bucket algorithm with configurable limits
-- **Circuit Breaker**: Automatic failure detection with half-open state
 - **Request Timeouts**: Configurable per-service timeouts
 - **Graceful Shutdown**: 30-second timeout for in-flight requests
 
@@ -97,21 +101,14 @@ This service follows the **Backend for Frontend** pattern:
 |--------|------|-------------|
 | `GET` | `/hotels` | List all hotels (optional: `?city=&country=`) |
 | `GET` | `/hotels/{hotelId}` | Get hotel by ID |
-| `GET` | `/hotels/{hotelId}/details` | Get hotel with all rooms |
-| `POST` | `/hotels` | Create a new hotel |
-| `PUT` | `/hotels/{hotelId}` | Update hotel |
-| `DELETE` | `/hotels/{hotelId}` | Delete hotel |
+| `GET` | `/hotels/{hotelId}/details` | Get hotel with all its rooms |
 
 ### Rooms (Authentication Required)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/hotels/{hotelId}/rooms` | List rooms for a hotel |
 | `GET` | `/rooms/{roomId}` | Get room by ID |
-| `GET` | `/rooms/{roomId}/availability` | Check room availability (`?check_in=&check_out=`) |
-| `POST` | `/hotels/{hotelId}/rooms` | Create a new room |
-| `PUT` | `/rooms/{roomId}` | Update room |
-| `DELETE` | `/rooms/{roomId}` | Delete room |
+| `POST` | `/hotels/{hotelId}/rooms` | Create a new room (validates hotel exists) |
 
 ### Reservations (Authentication Required)
 
@@ -120,10 +117,7 @@ This service follows the **Backend for Frontend** pattern:
 | `GET` | `/reservations` | List user's reservations |
 | `GET` | `/reservations/{reservationId}` | Get reservation by ID |
 | `GET` | `/reservations/{reservationId}/details` | Get full reservation details (hotel + room + reservation) |
-| `POST` | `/reservations` | Create a new reservation |
-| `PUT` | `/reservations/{reservationId}` | Update reservation |
-| `PATCH` | `/reservations/{reservationId}/cancel` | Cancel reservation |
-| `DELETE` | `/reservations/{reservationId}` | Delete reservation |
+| `POST` | `/reservations` | Create a new reservation (validates hotel + room, calculates total) |
 
 ## Configuration
 
@@ -136,7 +130,6 @@ This service follows the **Backend for Frontend** pattern:
 | `RESERVATION_SERVICE_URL` | Reservation Service URL | `http://localhost:8083` |
 | `LOG_LEVEL` | Logging level (debug/info/warn/error) | `info` |
 | `LOG_FORMAT` | Logging format (json/text) | `json` |
-| `ENV` | Environment (development/staging/production) | `development` |
 
 ### config.yaml
 
@@ -163,12 +156,6 @@ rate_limit:
   requests_per_second: 100
   burst: 200
 
-circuit_breaker:
-  enabled: true
-  max_failures: 5
-  timeout: 30s
-  reset_timeout: 60s
-
 health:
   path: "/health"
   ready_path: "/ready"
@@ -182,9 +169,9 @@ logging:
 
 ### Prerequisites
 
-- Go 1.25.7+
+- Go 1.25+
 - Downstream services running (Hotel, Room, Reservation)
-- RSA key pair for JWT signing (`public.pem`, `private.pem`)
+- RSA key pair for JWT signing (`private.pem`, `public.pem`)
 
 ### Generate JWT Keys
 
@@ -229,37 +216,37 @@ app/
 │
 └── internal/
     ├── client/
-    │   ├── client.go         # Base HTTP client
-    │   ├── hotel_client.go   # Hotel Service client
-    │   ├── room_client.go    # Room Service client
+    │   ├── client.go        # Base HTTP client
+    │   ├── hotel_client.go  # Hotel Service client
+    │   ├── room_client.go   # Room Service client
     │   ├── reservation_client.go  # Reservation Service client
-    │   └── errors.go         # Client errors
+    │   └── errors.go        # Client errors
     │
     ├── config/
-    │   └── config.go         # Configuration loader
+    │   └── config.go        # Configuration loader
     │
     ├── handler/
-    │   ├── handlers.go       # Base HTTP handlers
-    │   ├── hotel_handlers.go # Hotel route handlers
-    │   ├── room_handlers.go  # Room route handlers
+    │   ├── handlers.go      # Base HTTP handlers
+    │   ├── hotel_handlers.go  # Hotel route handlers
+    │   ├── room_handlers.go   # Room route handlers
     │   ├── reservation_handlers.go  # Reservation route handlers
-    │   ├── middleware.go     # Middleware (JWT, rate limiting, CORS)
-    │   └── routing.go        # Route definitions
+    │   ├── middleware.go    # Middleware (JWT, rate limiting, CORS)
+    │   └── routing.go       # Route definitions
     │
     ├── helper/
-    │   ├── util.go           # Utility functions
-    │   └── validator.go      # Request validation
+    │   ├── util.go          # Utility functions
+    │   └── validator.go     # Request validation
     │
     ├── logging/
-    │   └── logger.go         # Structured logging
+    │   └── logger.go        # Structured logging
     │
     ├── models/
-    │   └── models.go         # Domain models
+    │   └── models.go        # Domain models
     │
     └── service/
-        ├── service.go        # Service interface
-        ├── hotel_service.go  # Hotel business logic
-        ├── room_service.go   # Room business logic
+        ├── service.go       # Service interface
+        ├── hotel_service.go # Hotel business logic
+        ├── room_service.go  # Room business logic
         └── reservation_service.go  # Reservation business logic
 ```
 
@@ -305,21 +292,8 @@ This BFF expects downstream services to implement the following REST API:
 
 ## Example Workflows
 
-### Create a Hotel
-```bash
-curl -X POST http://localhost:8080/hotels \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Grand Hotel",
-    "description": "A luxury hotel",
-    "address": "123 Main St",
-    "city": "New York",
-    "country": "USA"
-  }'
-```
-
 ### Create a Room
+
 ```bash
 curl -X POST http://localhost:8080/hotels/{hotelId}/rooms \
   -H "Authorization: Bearer <token>" \
@@ -333,6 +307,7 @@ curl -X POST http://localhost:8080/hotels/{hotelId}/rooms \
 ```
 
 ### Create a Reservation
+
 ```bash
 curl -X POST http://localhost:8080/reservations \
   -H "Authorization: Bearer <token>" \
@@ -348,17 +323,40 @@ curl -X POST http://localhost:8080/reservations \
 ```
 
 ### Get Reservation Details
+
 ```bash
 curl http://localhost:8080/reservations/{reservationId}/details \
   -H "Authorization: Bearer <token>"
 ```
 
 Response:
+
 ```json
 {
-  "reservation": { /* reservation data */ },
-  "hotel": { /* hotel data */ },
-  "room": { /* room data */ }
+  "reservation": {
+    "id": "res-123",
+    "hotel_id": "hotel-456",
+    "room_id": "room-789",
+    "user_id": "user-abc",
+    "guest_name": "John Doe",
+    "guest_email": "john@example.com",
+    "check_in": "2024-06-01T15:00:00Z",
+    "check_out": "2024-06-05T11:00:00Z",
+    "total_amount": 800.00,
+    "status": "confirmed"
+  },
+  "hotel": {
+    "id": "hotel-456",
+    "name": "Grand Hotel",
+    "city": "New York",
+    "country": "USA"
+  },
+  "room": {
+    "id": "room-789",
+    "room_number": "101",
+    "type": "deluxe",
+    "price": 200.00
+  }
 }
 ```
 
@@ -377,6 +375,66 @@ The BFF returns standard HTTP status codes:
 - `429 Too Many Requests` - Rate limit exceeded
 - `500 Internal Server Error` - Unexpected server error
 - `503 Service Unavailable` - Downstream service unavailable
+
+## Domain Models
+
+### Hotel
+
+```go
+type Hotel struct {
+    ID          string    `json:"id"`
+    Name        string    `json:"name"`
+    Description string    `json:"description"`
+    Address     string    `json:"address"`
+    City        string    `json:"city"`
+    Country     string    `json:"country"`
+    Rating      float64   `json:"rating"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
+}
+```
+
+### Room
+
+```go
+type Room struct {
+    ID          string    `json:"id"`
+    HotelID     string    `json:"hotel_id"`
+    HotelName   string    `json:"hotel_name,omitempty"`
+    RoomNumber  string    `json:"room_number"`
+    Type        string    `json:"type"`
+    Description string    `json:"description"`
+    Price       float64   `json:"price"`
+    Capacity    int       `json:"capacity"`
+    Amenities   []string  `json:"amenities"`
+    IsAvailable bool      `json:"is_available"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
+}
+```
+
+### Reservation
+
+```go
+type Reservation struct {
+    ID          string    `json:"id"`
+    HotelID     string    `json:"hotel_id"`
+    HotelName   string    `json:"hotel_name,omitempty"`
+    RoomID      string    `json:"room_id"`
+    RoomNumber  string    `json:"room_number,omitempty"`
+    UserID      string    `json:"user_id"`
+    GuestName   string    `json:"guest_name"`
+    GuestEmail  string    `json:"guest_email"`
+    GuestPhone  string    `json:"guest_phone"`
+    CheckIn     time.Time `json:"check_in"`
+    CheckOut    time.Time `json:"check_out"`
+    TotalAmount float64   `json:"total_amount"`
+    Status      string    `json:"status"`
+    Notes       string    `json:"notes"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
+}
+```
 
 ## Development
 
@@ -405,4 +463,17 @@ docker run -p 8080:8080 \
   -e RESERVATION_SERVICE_URL=http://reservation-service:8083 \
   -v /path/to/keys:/app/keys \
   bff-service
+```
+
+### Docker Compose
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f bff-service
+
+# Stop services
+docker-compose down
 ```

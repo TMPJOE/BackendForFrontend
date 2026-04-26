@@ -27,6 +27,8 @@ type JWT struct {
 type DownstreamServices struct {
 	HotelServiceURL       string `yaml:"hotel_service_url"`
 	RoomServiceURL        string `yaml:"room_service_url"`
+	BookingServiceURL     string `yaml:"booking_service_url"`
+	MediaServiceURL       string `yaml:"media_service_url"`
 	ReservationServiceURL string `yaml:"reservation_service_url"`
 	Timeout               string `yaml:"timeout"`
 }

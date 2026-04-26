@@ -7,16 +7,8 @@ import (
 	"hotel.com/app/internal/models"
 )
 
-// GetHotel retrieves a single hotel by ID
-func (s *BFFService) GetHotel(ctx context.Context, hotelID string) (*models.Hotel, error) {
-	hotel, err := s.hotelClient.GetHotel(ctx, hotelID)
-	if err != nil {
-		return nil, err
-	}
-	return mapHotelClientToModel(hotel), nil
-}
-
 // GetHotels retrieves all hotels with optional filters
+// PASSTHROUGH: Directly forwards to Hotel Service
 func (s *BFFService) GetHotels(ctx context.Context, city, country string) ([]models.Hotel, error) {
 	hotels, err := s.hotelClient.GetHotels(ctx, city, country)
 	if err != nil {
@@ -30,76 +22,35 @@ func (s *BFFService) GetHotels(ctx context.Context, city, country string) ([]mod
 	return result, nil
 }
 
-// CreateHotel creates a new hotel
-func (s *BFFService) CreateHotel(ctx context.Context, req *models.CreateHotelRequest) (*models.Hotel, error) {
-	createReq := &client.CreateHotelRequest{
-		Name:        req.Name,
-		Description: req.Description,
-		Address:     req.Address,
-		City:        req.City,
-		Country:     req.Country,
-		Rating:      req.Rating,
-	}
-
-	hotel, err := s.hotelClient.CreateHotel(ctx, createReq)
+// GetHotel retrieves a single hotel by ID
+// PASSTHROUGH: Directly forwards to Hotel Service
+func (s *BFFService) GetHotel(ctx context.Context, hotelID string) (*models.Hotel, error) {
+	hotel, err := s.hotelClient.GetHotel(ctx, hotelID)
 	if err != nil {
 		return nil, err
 	}
-
 	return mapHotelClientToModel(hotel), nil
-}
-
-// UpdateHotel updates an existing hotel
-func (s *BFFService) UpdateHotel(ctx context.Context, hotelID string, req *models.UpdateHotelRequest) (*models.Hotel, error) {
-	// Verify hotel exists
-	if _, err := s.hotelClient.GetHotel(ctx, hotelID); err != nil {
-		return nil, err
-	}
-
-	updateReq := &client.UpdateHotelRequest{
-		Name:        req.Name,
-		Description: req.Description,
-		Address:     req.Address,
-		City:        req.City,
-		Country:     req.Country,
-		Rating:      req.Rating,
-	}
-
-	hotel, err := s.hotelClient.UpdateHotel(ctx, hotelID, updateReq)
-	if err != nil {
-		return nil, err
-	}
-
-	return mapHotelClientToModel(hotel), nil
-}
-
-// DeleteHotel deletes a hotel by ID
-func (s *BFFService) DeleteHotel(ctx context.Context, hotelID string) error {
-	// Verify hotel exists
-	if _, err := s.hotelClient.GetHotel(ctx, hotelID); err != nil {
-		return err
-	}
-
-	return s.hotelClient.DeleteHotel(ctx, hotelID)
 }
 
 // GetHotelWithRooms retrieves a hotel with all its rooms
+// AGGREGATION: Calls Hotel Service + Room Service, merges response
+// This is a BFF value-add: frontend gets hotel + rooms in one call
 func (s *BFFService) GetHotelWithRooms(ctx context.Context, hotelID string) (*models.HotelWithRooms, error) {
-	// Fetch hotel
+	// Fetch hotel from Hotel Service
 	hotel, err := s.hotelClient.GetHotel(ctx, hotelID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch rooms for this hotel
+	// Fetch rooms from Room Service
 	rooms, err := s.roomClient.GetRoomsByHotel(ctx, hotelID)
 	if err != nil {
+		// Don't fail if rooms can't be fetched, just return empty
 		s.logger.Warn("failed to get rooms for hotel", "hotel_id", hotelID, "error", err)
-		// Continue without rooms - they might be empty or error is non-fatal
 		rooms = []client.Room{}
 	}
 
-	// Map rooms to model
+	// Map rooms with hotel name
 	mappedRooms := make([]models.Room, len(rooms))
 	for i, r := range rooms {
 		mappedRooms[i] = *mapRoomClientToModel(&r, hotel.Name)
