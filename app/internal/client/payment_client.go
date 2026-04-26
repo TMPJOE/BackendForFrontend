@@ -64,7 +64,7 @@ func (c *PaymentClient) ProcessPayment(ctx context.Context, req *ProcessPaymentR
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, handleErrorResponse(resp)
+		return nil, fmt.Errorf("payment service returned status %d", resp.StatusCode)
 	}
 
 	var result PaymentResponse
